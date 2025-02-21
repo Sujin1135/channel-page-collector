@@ -2,19 +2,41 @@ package collector
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"github.com/gocolly/colly/v2"
 	"log"
-	url2 "net/url"
+	"net/url"
 	"strings"
 )
+
+type ChannelResponse struct {
+	Contents struct {
+		TwoColumnSearchResultsRenderer struct {
+			PrimaryContents struct {
+				SectionListRenderer struct {
+					SectionListRendererContents []struct {
+						ItemSectionRenderer struct {
+							ItemSectionRendererContents []struct {
+								ChannelRenderer struct {
+									ChannelID string `json:"channelId"`
+								} `json:"channelRenderer"`
+							} `json:"contents"`
+						} `json:"itemSectionRenderer"`
+					} `json:"contents"`
+				} `json:"sectionListRenderer"`
+			} `json:"primaryContents"`
+		} `json:"twoColumnSearchResultsRenderer"`
+	} `json:"contents"`
+}
 
 type Collector struct {
 	collector *colly.Collector
 }
 
 const (
-	baseUrl = "https://www.youtube.com/results"
+	baseUrl    = "https://www.youtube.com/results"
+	htmlPrefix = "var ytInitialData = "
 )
 
 func NewWebsiteCollector() *Collector {
@@ -24,53 +46,51 @@ func NewWebsiteCollector() *Collector {
 	)}
 }
 
-func (c *Collector) Collect(channel string) {
-	c.collector.OnHTML(`script`, func(e *colly.HTMLElement) {
-		content := e.Text
-		prefix := "var ytInitialData = "
+func (c *Collector) Collect(keyword string) ([]string, error) {
+	var channelIDs []string
+	var collectErr error
 
-		if strings.Contains(content, prefix) {
-			startIdx := strings.Index(content, prefix)
-			jsonPart := content[startIdx+len(prefix):]
-			jsonPart = strings.TrimSpace(jsonPart)
-
-			if strings.HasSuffix(jsonPart, ";") {
-				jsonPart = strings.TrimSuffix(jsonPart, ";")
-			}
-
-			var ytInitialData interface{}
-			if err := json.Unmarshal([]byte(jsonPart), &ytInitialData); err != nil {
-				log.Printf("JSON 파싱 오류: %v", err)
-				return
-			}
-			dataMap, ok := ytInitialData.(map[string]interface{})
-			if !ok {
-				log.Println("ytInitialData의 타입이 예상과 다릅니다.")
+	c.collector.OnHTML("script", func(e *colly.HTMLElement) {
+		if strings.Contains(e.Text, htmlPrefix) {
+			response, err := c.extractChannelResponse(e.Text)
+			if err != nil {
+				log.Println("extract channel response error:", err)
+				collectErr = err
 				return
 			}
 
-			contentsMap := dataMap["contents"].(map[string]interface{})
-			twoColumn := contentsMap["twoColumnSearchResultsRenderer"].(map[string]interface{})
-			primaryContents := twoColumn["primaryContents"].(map[string]interface{})
-			sectionListRenderer := primaryContents["sectionListRenderer"].(map[string]interface{})
-			contents := sectionListRenderer["contents"].([]interface{})
-			for _, content := range contents {
-				if val, ok := content.(map[string]interface{})["itemSectionRenderer"]; ok {
-					itemRenderer := val.(map[string]interface{})
-					innerContents := itemRenderer["contents"].([]interface{})
-					for _, inner := range innerContents {
-						if channelRenderer, ok := inner.(map[string]interface{})["channelRenderer"].(map[string]interface{}); ok {
-							if channelId, ok := channelRenderer["channelId"].(string); ok {
-								fmt.Println(channelId)
-							}
-						}
-					}
+			for _, content := range response.Contents.TwoColumnSearchResultsRenderer.PrimaryContents.SectionListRenderer.SectionListRendererContents {
+				for _, inner := range content.ItemSectionRenderer.ItemSectionRendererContents {
+					channelIDs = append(channelIDs, inner.ChannelRenderer.ChannelID)
 				}
 			}
 		}
 	})
 
-	url := fmt.Sprintf("%s?search_query=%s&sp=%s", baseUrl, url2.QueryEscape(channel), "EgIQAg%253D%253D")
-	c.collector.Visit(url)
+	c.collector.Visit(fmt.Sprintf("%s?search_query=%s&sp=%s", baseUrl, url.QueryEscape(keyword), "EgIQAg%253D%253D"))
 	c.collector.Wait()
+
+	if collectErr != nil {
+		return nil, collectErr
+	}
+
+	return channelIDs, nil
+}
+
+func (c *Collector) extractChannelResponse(content string) (*ChannelResponse, error) {
+	startIdx := strings.Index(content, htmlPrefix)
+	jsonPart := content[startIdx+len(htmlPrefix):]
+	jsonPart = strings.TrimSpace(jsonPart)
+
+	if strings.HasSuffix(jsonPart, ";") {
+		jsonPart = strings.TrimSuffix(jsonPart, ";")
+	}
+
+	var response ChannelResponse
+	if err := json.Unmarshal([]byte(jsonPart), &response); err != nil {
+		log.Printf("JSON Parssing error: %v \n", err)
+		return nil, errors.New("occurred an error when extract channel response")
+	}
+
+	return &response, nil
 }
