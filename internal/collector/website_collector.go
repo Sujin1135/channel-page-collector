@@ -2,10 +2,9 @@ package collector
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
 	"github.com/gocolly/colly/v2"
-	"log"
+	"github.com/pkg/errors"
 	"net/url"
 	"strings"
 )
@@ -54,8 +53,7 @@ func (c *Collector) Collect(keyword string) ([]string, error) {
 		if strings.Contains(e.Text, htmlPrefix) {
 			response, err := c.extractChannelResponse(e.Text)
 			if err != nil {
-				log.Println("extract channel response error:", err)
-				collectErr = err
+				collectErr = errors.Wrap(err, "extract channel response error:")
 				return
 			}
 
@@ -88,7 +86,6 @@ func (c *Collector) extractChannelResponse(content string) (*ChannelResponse, er
 
 	var response ChannelResponse
 	if err := json.Unmarshal([]byte(jsonPart), &response); err != nil {
-		log.Printf("JSON Parssing error: %v \n", err)
 		return nil, errors.New("occurred an error when extract channel response")
 	}
 
