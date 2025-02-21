@@ -1,12 +1,16 @@
 package collector
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/chromedp/cdproto/cdp"
+	"github.com/chromedp/chromedp"
 	"github.com/gocolly/colly/v2"
 	"github.com/pkg/errors"
 	"net/url"
 	"strings"
+	"time"
 )
 
 type ChannelResponse struct {
@@ -34,15 +38,87 @@ type Collector struct {
 }
 
 const (
-	baseUrl    = "https://www.youtube.com/results"
-	htmlPrefix = "var ytInitialData = "
+	baseUrl          = "https://www.youtube.com/results"
+	htmlPrefix       = "var ytInitialData = "
+	scrollDownScript = "window.scrollBy(0, 3000);"
+	userAgent        = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.3"
 )
 
 func NewWebsiteCollector() *Collector {
 	return &Collector{collector: colly.NewCollector(
-		colly.UserAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.3"),
+		colly.UserAgent(userAgent),
 		colly.AllowedDomains("www.youtube.com", "youtube.com"),
 	)}
+}
+
+func (c *Collector) CollectWithScrolling(keyword string, numScrolls int) ([]string, error) {
+	ctx, cancel := chromedp.NewContext(context.Background())
+	defer cancel()
+
+	accessErr := c.accessWebsite(ctx, keyword)
+	if accessErr != nil {
+		return nil, errors.Wrap(accessErr, fmt.Sprintf("failed to access website by keyword as %s", keyword))
+	}
+
+	scrollDownErr := c.scrollDown(numScrolls, ctx)
+	if scrollDownErr != nil {
+		return nil, errors.Wrap(scrollDownErr, "failed to scroll down")
+	}
+
+	subscriberNames, extractErr := c.extractSubscriberNames(ctx)
+	if extractErr != nil {
+		return nil, errors.Wrap(extractErr, "failed to extract subscriber names")
+	}
+
+	fmt.Printf("총 %d개의 '#subscribers' 노드 수집됨\n", len(subscriberNames))
+
+	return subscriberNames, nil
+}
+
+func (c *Collector) accessWebsite(ctx context.Context, keyword string) error {
+	uri := fmt.Sprintf("%s?search_query=%s&sp=%s", baseUrl, url.QueryEscape(keyword), "EgIQAg%253D%253D")
+	err := chromedp.Run(ctx,
+		chromedp.Navigate(uri),
+		chromedp.Evaluate(scrollDownScript, nil),
+	)
+	if err != nil {
+		return errors.Wrap(err, fmt.Sprintf("failed to navigate to %s", uri))
+	}
+	time.Sleep(1 * time.Second)
+	return nil
+}
+
+func (c *Collector) extractSubscriberNames(ctx context.Context) ([]string, error) {
+	var allNodes []*cdp.Node
+	runErr := chromedp.Run(ctx,
+		chromedp.Nodes(`#subscribers`, &allNodes, chromedp.NodeVisible),
+	)
+	if runErr != nil {
+		return nil, errors.Wrap(runErr, "failed to fetch subscriber nodes")
+	}
+
+	subscriberNames := make([]string, 0, len(allNodes))
+
+	for _, node := range allNodes {
+		for _, children := range node.Children {
+			subscriberNames = append(subscriberNames, children.NodeValue)
+		}
+	}
+	return subscriberNames, nil
+}
+
+func (c *Collector) scrollDown(numScrolls int, ctx context.Context) error {
+	for i := 0; i < numScrolls; i++ {
+		runErr := chromedp.Run(ctx,
+			chromedp.Evaluate(scrollDownScript, nil),
+		)
+		if runErr != nil {
+			return errors.Wrap(runErr, "failed to scroll page")
+		}
+
+		time.Sleep(1 * time.Second)
+	}
+	return nil
 }
 
 func (c *Collector) Collect(keyword string) ([]string, error) {
