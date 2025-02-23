@@ -1,0 +1,3 @@
+[submodule "api/grpc/interface/channel-page-collector-interface"]
+	path = api/grpc/interface/channel-page-collector-interface
+	url = git@github.com:Sujin1135/channel-page-collector-interface.git
