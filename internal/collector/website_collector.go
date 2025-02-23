@@ -46,7 +46,7 @@ const (
 	contentSizePerPage       = 20
 	scriptForExtractElements = `
 		(function(){
-			const xpath = "(//ytd-two-column-search-results-renderer//*[@id='subscribers'])[position()>=%d and position()<=%d]";
+			const xpath = "(//ytd-two-column-search-results-renderer//*[@id='main-link'])[position()>=%d and position()<=%d]";
 			const result = document.evaluate(
 			  xpath,
 			  document,
@@ -59,7 +59,7 @@ const (
 			  subscribersElements.push(result.snapshotItem(i));
 			}
 			window.scrollTo(0, document.documentElement.scrollHeight);
-			return subscribersElements.map((el) => el.textContent);
+			return subscribersElements.map((el) => decodeURIComponent(el.href.replace("https://www.youtube.com/", "")));
 		})();
 	`
 )
