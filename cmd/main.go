@@ -12,38 +12,25 @@ func main() {
 	websiteCollector := collector.NewWebsiteCollector()
 
 	var wg sync.WaitGroup
-	wg.Add(2)
+	wg.Add(1)
 
 	start := time.Now()
+	subscriberNamesChan := make(chan []string, 1)
 
 	go func() {
 		defer wg.Done()
 		fmt.Println("start to collect method 1")
-		subscriberNames, err := websiteCollector.CollectWithScrolling("운동", 5)
+		err := websiteCollector.CollectWithScrolling("운동", 5, subscriberNamesChan)
 		if err != nil {
 			log.Fatal("failed to collect subscriber names", err)
 		}
-
-		fmt.Println("ended to collect method 1")
-		fmt.Println("subscriber names as follow:")
-		for _, name := range subscriberNames {
-			fmt.Println(name)
-		}
 	}()
-	go func() {
-		defer wg.Done()
-		fmt.Println("start to collect method 2")
-		subscriberNames, err := websiteCollector.CollectWithScrolling("뷰티", 5)
-		if err != nil {
-			log.Fatal("failed to collect subscriber names", err)
-		}
 
-		fmt.Println("ended to collect method 2")
-		fmt.Println("subscriber names as follow:")
-		for _, name := range subscriberNames {
-			fmt.Println(name)
-		}
-	}()
+	fmt.Println("channel data as follow:")
+	for v := range subscriberNamesChan {
+		fmt.Println(v)
+	}
+
 	wg.Wait()
 
 	elapsed := time.Since(start)
