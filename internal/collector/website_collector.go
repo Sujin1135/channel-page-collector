@@ -65,7 +65,7 @@ func NewWebsiteCollector() *Collector {
 	}
 }
 
-func (c *Collector) CollectWithScrolling(keyword string, numScrolls int, ch chan []string) error {
+func (c *Collector) CollectWithScrolling(keyword string, numScrolls int, ch chan<- []string) error {
 	ctx, cancel := chromedp.NewContext(context.Background())
 	defer cancel()
 
@@ -103,7 +103,7 @@ func (c *Collector) accessWebsite(ctx context.Context, keyword string) error {
 func (c *Collector) extractSubscriberNames(
 	numScrolls int,
 	ctx context.Context,
-	ch chan []string,
+	ch chan<- []string,
 ) error {
 	for i := 0; i < numScrolls; i++ {
 		channelIds, err := c.extractSubscriberNameByIndex(ctx, i)
