@@ -106,11 +106,12 @@ func (c *Collector) extractSubscriberNames(
 	ch chan<- []string,
 ) error {
 	for i := 0; i < numScrolls; i++ {
-		channelIds, err := c.extractSubscriberNameByIndex(ctx, i)
+		subscriberNames, err := c.extractSubscriberNameByIndex(ctx, i)
 		if err != nil {
 			return errors.Wrap(err, fmt.Sprintf("failed to scroll down by n %d times\n", i+1))
 		}
-		ch <- channelIds
+
+		ch <- subscriberNames
 
 		time.Sleep(1 * time.Second)
 	}
